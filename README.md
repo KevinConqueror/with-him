@@ -15,18 +15,6 @@ Before using with-him, you need two things:
 
 ### 1. Prepare Your Reference Image
 
-Upload a clear portrait photo of yourself to a CDN:
-
-- **GitHub + jsDelivr**: Push to a public GitHub repo and use the jsDelivr CDN URL
-- **Cloudinary**: Upload and get the direct image URL
-- **AWS S3**: Host with public access
-- **Any other reliable CDN**
-
-Your reference image URL should look like:
-```
-https://cdn.jsdelivr.net/gh/yourname/yourrepo@main/assets/you.png
-```
-
 ### 2. Run the Installer
 
 ```bash
