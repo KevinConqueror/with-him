@@ -1,12 +1,12 @@
 ---
 name: clawra-selfie
-description: Edit Clawra's reference image with Grok Imagine (xAI Aurora) and send selfies to messaging channels via OpenClaw
+description: Edit Clawra's reference image with Jiemeng AI (Seedream) and send selfies to messaging channels via OpenClaw
 allowed-tools: Bash(npm:*) Bash(npx:*) Bash(openclaw:*) Bash(curl:*) Read Write WebFetch
 ---
 
 # Clawra Selfie
 
-Edit a fixed reference image using xAI's Grok Imagine model and distribute it across messaging platforms (WhatsApp, Telegram, Discord, Slack, etc.) via OpenClaw.
+Edit a fixed reference image using ByteDance's Jiemeng AI (Seedream) model and distribute it across messaging platforms (WhatsApp, Telegram, Discord, Slack, etc.) via OpenClaw.
 
 ## Reference Image
 
@@ -29,14 +29,14 @@ https://cdn.jsdelivr.net/gh/SumeLabs/clawra@main/assets/clawra.png
 ### Required Environment Variables
 
 ```bash
-FAL_KEY=your_fal_api_key          # Get from https://fal.ai/dashboard/keys
-OPENCLAW_GATEWAY_TOKEN=your_token  # From: openclaw doctor --generate-gateway-token
+VOLCENGINE_API_KEY=your_volcengine_api_key  # Get from https://console.volcengine.com/
+OPENCLAW_GATEWAY_TOKEN=your_token           # From: openclaw doctor --generate-gateway-token
 ```
 
 ### Workflow
 
 1. **Get user prompt** for how to edit the image
-2. **Edit image** via fal.ai Grok Imagine Edit API with fixed reference
+2. **Edit image** via Volcano Engine Jiemeng AI (Seedream) API with fixed reference
 3. **Extract image URL** from response
 4. **Send to OpenClaw** with target channel(s)
 
@@ -46,82 +46,56 @@ OPENCLAW_GATEWAY_TOKEN=your_token  # From: openclaw doctor --generate-gateway-to
 
 Ask the user for:
 - **User context**: What should the person in the image be doing/wearing/where?
-- **Mode** (optional): `mirror` or `direct` selfie style
 - **Target channel(s)**: Where should it be sent? (e.g., `#general`, `@username`, channel ID)
 - **Platform** (optional): Which platform? (discord, telegram, whatsapp, slack)
 
 ## Prompt Modes
 
-### Mode 1: Mirror Selfie (default)
-Best for: outfit showcases, full-body shots, fashion content
+### Mode 1: Image-to-Image (with reference)
+Best for: outfit changes, adding accessories, background changes
 
+Use the reference image URL and add your prompt:
 ```
-make a pic of this person, but [user's context]. the person is taking a mirror selfie
-```
-
-**Example**: "wearing a santa hat" →
-```
-make a pic of this person, but wearing a santa hat. the person is taking a mirror selfie
+wearing a santa hat, taking a mirror selfie
 ```
 
-### Mode 2: Direct Selfie
-Best for: close-up portraits, location shots, emotional expressions
+### Mode 2: Text-to-Image
+Best for: creating new scenes, locations, situations
 
 ```
-a close-up selfie taken by herself at [user's context], direct eye contact with the camera, looking straight into the lens, eyes centered and clearly visible, not a mirror selfie, phone held at arm's length, face fully visible
+a person at a cozy cafe with warm lighting, looking at the camera
 ```
 
-**Example**: "a cozy cafe with warm lighting" →
-```
-a close-up selfie taken by herself at a cozy cafe with warm lighting, direct eye contact with the camera, looking straight into the lens, eyes centered and clearly visible, not a mirror selfie, phone held at arm's length, face fully visible
-```
+### Step 2: Edit/Generate Image with Jiemeng AI
 
-### Mode Selection Logic
-
-| Keywords in Request | Auto-Select Mode |
-|---------------------|------------------|
-| outfit, wearing, clothes, dress, suit, fashion | `mirror` |
-| cafe, restaurant, beach, park, city, location | `direct` |
-| close-up, portrait, face, eyes, smile | `direct` |
-| full-body, mirror, reflection | `mirror` |
-
-### Step 2: Edit Image with Grok Imagine
-
-Use the fal.ai API to edit the reference image:
+Use the Volcano Engine API:
 
 ```bash
 REFERENCE_IMAGE="https://cdn.jsdelivr.net/gh/SumeLabs/clawra@main/assets/clawra.png"
 
-# Mode 1: Mirror Selfie
-PROMPT="make a pic of this person, but <USER_CONTEXT>. the person is taking a mirror selfie"
+PROMPT="wearing a cowboy hat, taking a mirror selfie"
 
-# Mode 2: Direct Selfie
-PROMPT="a close-up selfie taken by herself at <USER_CONTEXT>, direct eye contact with the camera, looking straight into the lens, eyes centered and clearly visible, not a mirror selfie, phone held at arm's length, face fully visible"
-
-# Build JSON payload with jq (handles escaping properly)
-JSON_PAYLOAD=$(jq -n \
-  --arg image_url "$REFERENCE_IMAGE" \
-  --arg prompt "$PROMPT" \
-  '{image_url: $image_url, prompt: $prompt, num_images: 1, output_format: "jpeg"}')
-
-curl -X POST "https://fal.run/xai/grok-imagine-image/edit" \
-  -H "Authorization: Key $FAL_KEY" \
+curl -X POST "https://ark.cn-beijing.volces.com/api/v3/images/generations" \
+  -H "Authorization: Bearer $VOLCENGINE_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "$JSON_PAYLOAD"
+  -d '{
+    "model": "doubao-seedream-4-5-251128",
+    "prompt": "'"$PROMPT"'",
+    "images": ["'"$REFERENCE_IMAGE"'"],
+    "size": "1024x1024",
+    "sequential_image_generation": "disabled",
+    "response_format": "url",
+    "stream": false,
+    "watermark": true
+  }'
 ```
 
 **Response Format:**
 ```json
 {
   "images": [
-    {
-      "url": "https://v3b.fal.media/files/...",
-      "content_type": "image/jpeg",
-      "width": 1024,
-      "height": 1024
-    }
-  ],
-  "revised_prompt": "Enhanced prompt text..."
+    "https://xxx.volces.com/xxx.jpg"
+  ]
 }
 ```
 
@@ -154,76 +128,54 @@ curl -X POST "http://localhost:18789/message" \
 
 ```bash
 #!/bin/bash
-# grok-imagine-edit-send.sh
+# clawra-selfie.sh
 
-# Check required environment variables
-if [ -z "$FAL_KEY" ]; then
-  echo "Error: FAL_KEY environment variable not set"
-  exit 1
+if [ -z "$VOLCENGINE_API_KEY" ]; then
+    echo "Error: VOLCENGINE_API_KEY environment variable not set"
+    exit 1
 fi
 
-# Fixed reference image
 REFERENCE_IMAGE="https://cdn.jsdelivr.net/gh/SumeLabs/clawra@main/assets/clawra.png"
+API_BASE="https://ark.cn-beijing.volces.com/api/v3/images/generations"
+MODEL="doubao-seedream-4-5-251128"
 
 USER_CONTEXT="$1"
 CHANNEL="$2"
-MODE="${3:-auto}"  # mirror, direct, or auto
-CAPTION="${4:-Edited with Grok Imagine}"
+CAPTION="${3:-Edited with Jiemeng AI}"
 
 if [ -z "$USER_CONTEXT" ] || [ -z "$CHANNEL" ]; then
-  echo "Usage: $0 <user_context> <channel> [mode] [caption]"
-  echo "Modes: mirror, direct, auto (default)"
-  echo "Example: $0 'wearing a cowboy hat' '#general' mirror"
-  echo "Example: $0 'a cozy cafe' '#general' direct"
-  exit 1
+    echo "Usage: $0 <user_context> <channel> [caption]"
+    echo "Example: $0 'wearing a cowboy hat' '#general'"
+    exit 1
 fi
 
-# Auto-detect mode based on keywords
-if [ "$MODE" == "auto" ]; then
-  if echo "$USER_CONTEXT" | grep -qiE "outfit|wearing|clothes|dress|suit|fashion|full-body|mirror"; then
-    MODE="mirror"
-  elif echo "$USER_CONTEXT" | grep -qiE "cafe|restaurant|beach|park|city|close-up|portrait|face|eyes|smile"; then
-    MODE="direct"
-  else
-    MODE="mirror"  # default
-  fi
-  echo "Auto-detected mode: $MODE"
-fi
+echo "Editing reference image with prompt: $USER_CONTEXT"
 
-# Construct the prompt based on mode
-if [ "$MODE" == "direct" ]; then
-  EDIT_PROMPT="a close-up selfie taken by herself at $USER_CONTEXT, direct eye contact with the camera, looking straight into the lens, eyes centered and clearly visible, not a mirror selfie, phone held at arm's length, face fully visible"
-else
-  EDIT_PROMPT="make a pic of this person, but $USER_CONTEXT. the person is taking a mirror selfie"
-fi
-
-echo "Mode: $MODE"
-echo "Editing reference image with prompt: $EDIT_PROMPT"
-
-# Edit image (using jq for proper JSON escaping)
-JSON_PAYLOAD=$(jq -n \
-  --arg image_url "$REFERENCE_IMAGE" \
-  --arg prompt "$EDIT_PROMPT" \
-  '{image_url: $image_url, prompt: $prompt, num_images: 1, output_format: "jpeg"}')
-
-RESPONSE=$(curl -s -X POST "https://fal.run/xai/grok-imagine-image/edit" \
-  -H "Authorization: Key $FAL_KEY" \
+RESPONSE=$(curl -s -X POST "$API_BASE" \
+  -H "Authorization: Bearer $VOLCENGINE_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "$JSON_PAYLOAD")
+  -d "{
+    \"model\": \"$MODEL\",
+    \"prompt\": \"$USER_CONTEXT\",
+    \"images\": [\"$REFERENCE_IMAGE\"],
+    \"size\": \"1024x1024\",
+    \"sequential_image_generation\": \"disabled\",
+    \"response_format\": \"url\",
+    \"stream\": false,
+    \"watermark\": true
+  }")
 
-# Extract image URL
-IMAGE_URL=$(echo "$RESPONSE" | jq -r '.images[0].url')
+IMAGE_URL=$(echo "$RESPONSE" | jq -r '.images[0]')
 
 if [ "$IMAGE_URL" == "null" ] || [ -z "$IMAGE_URL" ]; then
-  echo "Error: Failed to edit image"
-  echo "Response: $RESPONSE"
-  exit 1
+    echo "Error: Failed to edit image"
+    echo "Response: $RESPONSE"
+    exit 1
 fi
 
 echo "Image edited: $IMAGE_URL"
 echo "Sending to channel: $CHANNEL"
 
-# Send via OpenClaw
 openclaw message send \
   --action send \
   --channel "$CHANNEL" \
@@ -236,77 +188,52 @@ echo "Done!"
 ## Node.js/TypeScript Implementation
 
 ```typescript
-import { fal } from "@fal-ai/client";
 import { exec } from "child_process";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
 const REFERENCE_IMAGE = "https://cdn.jsdelivr.net/gh/SumeLabs/clawra@main/assets/clawra.png";
+const API_BASE = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
+const MODEL = "doubao-seedream-4-5-251128";
 
-interface GrokImagineResult {
-  images: Array<{
-    url: string;
-    content_type: string;
-    width: number;
-    height: number;
-  }>;
-  revised_prompt?: string;
-}
-
-type SelfieMode = "mirror" | "direct" | "auto";
-
-function detectMode(userContext: string): "mirror" | "direct" {
-  const mirrorKeywords = /outfit|wearing|clothes|dress|suit|fashion|full-body|mirror/i;
-  const directKeywords = /cafe|restaurant|beach|park|city|close-up|portrait|face|eyes|smile/i;
-
-  if (directKeywords.test(userContext)) return "direct";
-  if (mirrorKeywords.test(userContext)) return "mirror";
-  return "mirror"; // default
-}
-
-function buildPrompt(userContext: string, mode: "mirror" | "direct"): string {
-  if (mode === "direct") {
-    return `a close-up selfie taken by herself at ${userContext}, direct eye contact with the camera, looking straight into the lens, eyes centered and clearly visible, not a mirror selfie, phone held at arm's length, face fully visible`;
-  }
-  return `make a pic of this person, but ${userContext}. the person is taking a mirror selfie`;
+interface SeedreamResult {
+  images: string[];
 }
 
 async function editAndSend(
   userContext: string,
   channel: string,
-  mode: SelfieMode = "auto",
   caption?: string
 ): Promise<string> {
-  // Configure fal.ai client
-  fal.config({
-    credentials: process.env.FAL_KEY!
+  const apiKey = process.env.VOLCENGINE_API_KEY;
+  if (!apiKey) {
+    throw new Error("VOLCENGINE_API_KEY not set");
+  }
+
+  const response = await fetch(API_BASE, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      prompt: userContext,
+      images: [REFERENCE_IMAGE],
+      size: "1024x1024",
+      sequential_image_generation: "disabled",
+      response_format: "url",
+      stream: false,
+      watermark: true,
+    }),
   });
 
-  // Determine mode
-  const actualMode = mode === "auto" ? detectMode(userContext) : mode;
-  console.log(`Mode: ${actualMode}`);
-
-  // Construct the prompt
-  const editPrompt = buildPrompt(userContext, actualMode);
-
-  // Edit reference image with Grok Imagine
-  console.log(`Editing image: "${editPrompt}"`);
-
-  const result = await fal.subscribe("xai/grok-imagine-image/edit", {
-    input: {
-      image_url: REFERENCE_IMAGE,
-      prompt: editPrompt,
-      num_images: 1,
-      output_format: "jpeg"
-    }
-  }) as { data: GrokImagineResult };
-
-  const imageUrl = result.data.images[0].url;
+  const result = (await response.json()) as SeedreamResult;
+  const imageUrl = result.images[0];
   console.log(`Edited image URL: ${imageUrl}`);
 
-  // Send via OpenClaw
-  const messageCaption = caption || `Edited with Grok Imagine`;
+  const messageCaption = caption || "Edited with Jiemeng AI";
 
   await execAsync(
     `openclaw message send --action send --channel "${channel}" --message "${messageCaption}" --media "${imageUrl}"`
@@ -318,27 +245,16 @@ async function editAndSend(
 
 // Usage Examples
 
-// Mirror mode (auto-detected from "wearing")
 editAndSend(
   "wearing a cyberpunk outfit with neon lights",
   "#art-gallery",
-  "auto",
   "Check out this AI-edited art!"
 );
-// → Mode: mirror
-// → Prompt: "make a pic of this person, but wearing a cyberpunk outfit with neon lights. the person is taking a mirror selfie"
 
-// Direct mode (auto-detected from "cafe")
 editAndSend(
-  "a cozy cafe with warm lighting",
-  "#photography",
-  "auto"
+  "at a cozy cafe with warm lighting",
+  "#photography"
 );
-// → Mode: direct
-// → Prompt: "a close-up selfie taken by herself at a cozy cafe with warm lighting, direct eye contact..."
-
-// Explicit mode override
-editAndSend("casual street style", "#fashion", "direct");
 ```
 
 ## Supported Platforms
@@ -354,21 +270,26 @@ OpenClaw supports sending to:
 | Signal | Phone number | `+1234567890` |
 | MS Teams | Channel reference | (varies) |
 
-## Grok Imagine Edit Parameters
+## Seedream API Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `image_url` | string | required | URL of image to edit (fixed in this skill) |
-| `prompt` | string | required | Edit instruction |
-| `num_images` | 1-4 | 1 | Number of images to generate |
-| `output_format` | enum | "jpeg" | jpeg, png, webp |
+| `model` | string | required | Model identifier: `doubao-seedream-4-5-251128` |
+| `prompt` | string | required | Generation/edit instruction |
+| `images` | string[] | optional | Reference image URLs for image-to-image |
+| `size` | string | "1024x1024" | Output size: 1024x1024, 2048x2048, 1K, 2K, 4K |
+| `watermark` | boolean | false | Whether to add watermark |
+| `sequential_image_generation` | string | optional | "auto" for batch generation |
+| `max_images` | number | optional | Max images for batch generation (1-15) |
 
 ## Setup Requirements
 
-### 1. Install fal.ai client (for Node.js usage)
-```bash
-npm install @fal-ai/client
-```
+### 1. Get Volcano Engine API Key
+
+Visit https://console.volcengine.com/ and create an account. Then:
+- Go to "Access Keys" or "API Keys" in the console
+- Create a new API key
+- Ensure you have activated the Seedream 4.0 service
 
 ### 2. Install OpenClaw CLI
 ```bash
@@ -388,25 +309,24 @@ openclaw gateway start
 
 ## Error Handling
 
-- **FAL_KEY missing**: Ensure the API key is set in environment
-- **Image edit failed**: Check prompt content and API quota
+- **VOLCENGINE_API_KEY missing**: Ensure the API key is set in environment
+- **Image generation failed**: Check prompt content and API quota
 - **OpenClaw send failed**: Verify gateway is running and channel exists
-- **Rate limits**: fal.ai has rate limits; implement retry logic if needed
+- **Rate limits**: Implement retry logic if needed
 
 ## Tips
 
-1. **Mirror mode context examples** (outfit focus):
+1. **Image-to-image examples**:
    - "wearing a santa hat"
    - "in a business suit"
-   - "wearing a summer dress"
-   - "in streetwear fashion"
+   - "with sunglasses"
+   - "at the beach"
 
-2. **Direct mode context examples** (location/portrait focus):
-   - "a cozy cafe with warm lighting"
-   - "a sunny beach at sunset"
-   - "a busy city street at night"
-   - "a peaceful park in autumn"
+2. **Text-to-image examples**:
+   - "a person at a cozy cafe with warm lighting"
+   - "someone at a sunny beach at sunset"
+   - "a portrait in a busy city street at night"
 
-3. **Mode selection**: Let auto-detect work, or explicitly specify for control
-4. **Batch sending**: Edit once, send to multiple channels
-5. **Scheduling**: Combine with OpenClaw scheduler for automated posts
+3. **Size options**: Use smaller sizes for faster generation (1024x1024), larger for quality (2048x2048, 2K, 4K)
+
+4. **Batch generation**: Set `sequential_image_generation: "auto"` and `max_images` to generate multiple variations
